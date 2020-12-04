@@ -16,6 +16,8 @@ class BarsConnection():
         self._host = host
         self._port = port
 
+        # Need Version from a config file
+
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock_lock = threading.RLock()
         self._buff_lock = threading.RLock()
@@ -29,6 +31,8 @@ class BarsConnection():
             if self._read_socket():
                 self._process_messages()
 
+    ###########################################################################
+    # Starting and stopping socket & thread
     def connect(self):
         '''
         Need 'S,CONNECT' or 'S,Set Client Name,' messages to gateway?
@@ -62,6 +66,9 @@ class BarsConnection():
             self._reader_thread.join(30)
         if self._reader_thread.is_alive():
             print('ERROR! Reader thread still ALIVE!')
+
+    ###########################################################################
+    # Reading from & writing to socket
 
     def _read_socket(self):
         data_received = self._sock.recv(1024).decode()
@@ -101,5 +108,13 @@ class BarsConnection():
             self._sock.sendall(cmd.encode(encoding='latin-1'))
             print('\nSent string:')
             print(cmd,'\n')
+
+    ###########################################################################
+    # IQFeed protocols
+
+    def _set_protocol(self, protocol):
+        '''  S,SET PROTOCOL,[MAJOR VERSION].[MINOR VERSION]<CR><LF> '''
+        self.send_cmd(f'S,SET PROTOCOL,{str(self.protocol)}\r\n')
+
 
     # Future code - subscribe & unsubscribe, push to subs
