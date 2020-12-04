@@ -4,6 +4,9 @@ import connection
 if __name__ == "__main__":
 
     host = "127.0.0.1"  # Localhost
+    ##########################################
+    # Need port for the Live Bar Interval data
+    ##########################################
     port = # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     print('Initilizing connection...')
