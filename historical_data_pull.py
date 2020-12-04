@@ -46,7 +46,7 @@ def download_ticker(ticker,interval,start_date,end_date):
     # FOR SOME SICK FUCKING REASON THE PRICE DATA COMES BACK HLOC instead of OHLC!
 
     Data returned as:
-    [YYYY-MM-DD HH:mm:SS],[HIGH],[LOW],[OPEN],[CLOSE],[VOLUME],[OPEN INTEREST]
+    [YYYY-MM-DD HH:mm:SS],[HIGH],[LOW],[OPEN],[CLOSE],[OPEN INTEREST],[VOLUME]
     #####################################################################################
     '''
 
@@ -107,7 +107,7 @@ def download_ticker(ticker,interval,start_date,end_date):
 
         df = pd.DataFrame(data=split_data,columns=cols)
 
-        # Reorder and drop 'openinterest'
+        # Reorder columns and drop 'openinterest'
         df = df[['date','time','open','high','low','close','volume']]
         
         # Convert strings to numerics for price & volume data (date & time left as strings)
