@@ -74,15 +74,14 @@ def download_ticker(ticker,interval,start_date,end_date):
 
     message = f'HIT,{ticker},{str(interval)},{str(start_date)} 075000,{str(end_date)} 161500,,093000,160000,1\n'
 
-    # Open a streaming socket to the IQFeed local gateway
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(20)
-    sock.connect((host, port))
-
-    # Send the historical data request message and buffer the data
-    data = ''
-
     try:
+        # Open a streaming socket to the IQFeed local gateway
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(20)
+        sock.connect((host, port))
+
+        # Send the historical data request message and buffer the data
+        data = ''
         sock.sendall(message.encode())
         data = read_historical_data_socket(sock)
         sock.close
