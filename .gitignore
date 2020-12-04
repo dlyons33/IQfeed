@@ -6,11 +6,13 @@
 *.exe
 *.o
 *.so
+__pycache__
 
 # Jupyter Notebooks #
 #####################
 # Exclude notebooks for testing definitions
 *.ipynb
+.ipynb_checkpoints
 
 # Private Settings #
 ####################
