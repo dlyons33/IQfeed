@@ -99,13 +99,18 @@ def download_ticker(ticker,interval,start_date,end_date):
         # Remove all the endlines and line-ending comma delimiter from each record
         data = data.replace(',\r','')
 
+        # Split data into rows & fields for conversion to dataframe
+        split_data = [s.split(',') for s in data.split('\n')]
+
         cols = ['date','time','high','low','open','close','openinterest','volume']
         numeric_list = ['high','low','open','close','volume']
 
-        split_data = [s.split(',') for s in data.split('\n')]
         df = pd.DataFrame(data=split_data,columns=cols)
+
+        # Reorder and drop 'openinterest'
         df = df[['date','time','open','high','low','close','volume']]
         
+        # Convert strings to numerics for price & volume data (date & time left as strings)
         for c in numeric_list:
             df[c] = pd.to_numeric(df[c])
 
