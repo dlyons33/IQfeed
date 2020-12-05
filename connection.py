@@ -1,5 +1,6 @@
 import socket
 import threading
+import pandas as pd
 
 '''
 Next step:
@@ -11,12 +12,12 @@ def push_to_listeners() # push new bars
 
 class BarsConnection():
 
-    def __init__(self,host,port):
+    def __init__(self,host,port,version,dfqueue):
         self._name = 'LiveBarListener'
         self._host = host
         self._port = port
-
-        # Need Version from a config file
+        self._version = version
+        self._dfqueue = dfqueue
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock_lock = threading.RLock()
@@ -24,8 +25,10 @@ class BarsConnection():
         self._buffered_data = ''
 
         self._stop = threading.Event()
-        self._reader_thread = thrading.Thread(target=self,name=self._name)
+        self._reader_thread = threading.Thread(target=self,name=self._name)
 
+    ###########################################################################
+    # Callable looped by the new thread (target), listening at the socket
     def __call__(self):
         while not self._stop.is_set():
             if self._read_socket():
@@ -34,11 +37,10 @@ class BarsConnection():
     ###########################################################################
     # Starting and stopping socket & thread
     def connect(self):
-        '''
-        Need 'S,CONNECT' or 'S,Set Client Name,' messages to gateway?
-        '''
         try:
             self._sock.connect((self._host,self._port))
+            self._sock.setblocking(False)
+            self._set_protocol()
             self._start_reader()
             print('Socket connected & reader thread started!')
         except Exception as e:
@@ -48,7 +50,7 @@ class BarsConnection():
             print('\n===============================================\n')
 
     def disconnect(self):
-        self.send_cmd('S,UNWATCH ALL') # terminate subscriptions?
+        self.send_cmd('S,UNWATCH ALL\r\n')
         self._stop_reader()
         if self._sock:
             self._sock.shutdown(socket.SHUT_RDWR)
@@ -71,10 +73,12 @@ class BarsConnection():
     # Reading from & writing to socket
 
     def _read_socket(self):
-        data_received = self._sock.recv(1024).decode()
+        data_received = None
+        try:
+            data_received = self._sock.recv(1024).decode()
+        except:
+            pass
         if data_received:
-            print('\nNew data received from socket:')
-            print(data_received,'\n')
             with self._buff_lock:
                 self._buffered_data += data_received
             return True
@@ -86,8 +90,6 @@ class BarsConnection():
             next_delim = self._buffered_data.find('\n')
             if next_delim != -1:
                 message = self._buffered_data[:next_delim].strip()
-                print('\nNew full message buffered:')
-                print(message,'\n')
                 self._buffered_data = self._buffered_data[(next_delim + 1):]
                 return message
             else:
@@ -96,25 +98,54 @@ class BarsConnection():
     def _process_messages(self):
         message = self._next_message()
         while message != '':
-            fields = message.split(',')
-            print('\n===============================================\n')
-            for f in fields:
-                print(f)
-            print('\n===============================================\n')
+            self._parse_message(message)            
             message = self._next_message()
 
-    def send_cmd(cmd):
+    def send_cmd(self,cmd):
         with self._sock_lock:
-            self._sock.sendall(cmd.encode(encoding='latin-1'))
+            #self._sock.sendall(cmd.encode(encoding='latin-1'))
+            self._sock.sendall(cmd.encode())
             print('\nSent string:')
             print(cmd,'\n')
+
+    def _parse_message(self,msg):
+        fields = msg.split(',')
+
+        if (fields[0] == 'S') & (fields[1] == 'KEY'):
+            print(msg)
+            self.send_cmd(f'{msg}\r\n')
+
+        elif (fields[0] == 'T'):
+            print(msg[1:])
+
+        elif (fields[0] == 'TEST') & (fields[1] == 'BH'):
+            d= {
+                'symbol':fields[2],
+                'datetime':fields[3],
+                'open':fields[4],
+                'high':fields[5],
+                'low':fields[6],
+                'close':fields[7],
+                'volume':fields[9],
+                'cumvol':fields[8],
+            }
+            self._dfqueue.put(d)
+
+        else:
+            print('\n========================================')
+            for f in fields:
+                print(f)
+            print('========================================\n')
 
     ###########################################################################
     # IQFeed protocols
 
-    def _set_protocol(self, protocol):
+    def _set_protocol(self):
         '''  S,SET PROTOCOL,[MAJOR VERSION].[MINOR VERSION]<CR><LF> '''
-        self.send_cmd(f'S,SET PROTOCOL,{str(self.protocol)}\r\n')
+        self.send_cmd(f'S,SET PROTOCOL,{str(self._version)}\r\n')
 
+    def get_df(self):
+        df = pd.DataFrame(data=self._bars)
+        return df
 
     # Future code - subscribe & unsubscribe, push to subs
