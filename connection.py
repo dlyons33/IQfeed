@@ -2,22 +2,16 @@ import socket
 import threading
 import pandas as pd
 
-'''
-Next step:
-self._listeners = []
-def subscribe()
-def unsubscribe()
-def push_to_listeners() # push new bars
-'''
-
 class BarsConnection():
 
-    def __init__(self,host,port,version,dfqueue):
+    def __init__(self,host,port,version,msgqueue):
         self._name = 'LiveBarListener'
         self._host = host
         self._port = port
         self._version = version
-        self._dfqueue = dfqueue
+
+        self._msgqueue = msgqueue
+        self._msg_count = 0
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock_lock = threading.RLock()
@@ -26,6 +20,8 @@ class BarsConnection():
 
         self._stop = threading.Event()
         self._reader_thread = threading.Thread(target=self,name=self._name)
+
+        self._printLock = threading.RLock()
 
     ###########################################################################
     # Callable looped by the new thread (target), listening at the socket
@@ -42,12 +38,14 @@ class BarsConnection():
             self._sock.setblocking(False)
             self._set_protocol()
             self._start_reader()
-            print('Socket connected & reader thread started!')
+            with self._printLock:
+                print('Socket connected & reader thread started!')
         except Exception as e:
-            print('\n===============================================\n')
-            print('ERROR connecting to socket or starting thread!')
-            print(e)
-            print('\n===============================================\n')
+            with self._printLock:
+                print('\n===============================================\n')
+                print('ERROR connecting to socket or starting thread!')
+                print(e)
+                print('\n===============================================\n')
 
     def disconnect(self):
         self.send_cmd('S,UNWATCH ALL\r\n')
@@ -67,7 +65,8 @@ class BarsConnection():
         if self._reader_thread.is_alive():
             self._reader_thread.join(30)
         if self._reader_thread.is_alive():
-            print('ERROR! Reader thread still ALIVE!')
+            with self._printLock:
+                print('ERROR! Reader thread still ALIVE!')
 
     ###########################################################################
     # Reading from & writing to socket
@@ -98,44 +97,22 @@ class BarsConnection():
     def _process_messages(self):
         message = self._next_message()
         while message != '':
-            self._parse_message(message)            
+            self._queue_message(message)            
             message = self._next_message()
 
     def send_cmd(self,cmd):
         with self._sock_lock:
             #self._sock.sendall(cmd.encode(encoding='latin-1'))
             self._sock.sendall(cmd.encode())
-            print('\nSent string:')
-            print(cmd,'\n')
+            with self._printLock:
+                print('>>>>>>>>>>>>> Sent string:',cmd[:-2])
 
-    def _parse_message(self,msg):
+    def _queue_message(self,msg):
         fields = msg.split(',')
-
-        if (fields[0] == 'S') & (fields[1] == 'KEY'):
-            print(msg)
-            self.send_cmd(f'{msg}\r\n')
-
-        elif (fields[0] == 'T'):
-            print(msg[1:])
-
-        elif (fields[0] == 'TEST') & (fields[1] == 'BH'):
-            d= {
-                'symbol':fields[2],
-                'datetime':fields[3],
-                'open':fields[4],
-                'high':fields[5],
-                'low':fields[6],
-                'close':fields[7],
-                'volume':fields[9],
-                'cumvol':fields[8],
-            }
-            self._dfqueue.put(d)
-
-        else:
-            print('\n========================================')
-            for f in fields:
-                print(f)
-            print('========================================\n')
+        self._msgqueue.put(fields)
+        # print('Queue size:',self._msgqueue.qsize())
+        # self._msg_count += 1
+        # print(f'Queued {self._msg_count} messages')
 
     ###########################################################################
     # IQFeed protocols
@@ -144,8 +121,8 @@ class BarsConnection():
         '''  S,SET PROTOCOL,[MAJOR VERSION].[MINOR VERSION]<CR><LF> '''
         self.send_cmd(f'S,SET PROTOCOL,{str(self._version)}\r\n')
 
-    def get_df(self):
-        df = pd.DataFrame(data=self._bars)
-        return df
+    def print_msg(self,msg):
+        with self._printLock:
+            print(msg)
 
     # Future code - subscribe & unsubscribe, push to subs

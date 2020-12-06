@@ -16,9 +16,9 @@ __pycache__
 
 # Private Settings #
 ####################
-# API tokens,secrets, etc.
-# config.cfg
-*.cfg
+# API tokens,secrets, credentials, etc.
+# user.pwd
+*.pwd
 
 # Packages #
 ############
@@ -36,6 +36,7 @@ __pycache__
 *.log
 *.sql
 *.sqlite
+*.csv
 
 # OS generated files #
 ######################
