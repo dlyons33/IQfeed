@@ -11,7 +11,6 @@ class BarsConnection():
         self._version = version
 
         self._msgqueue = msgqueue
-        self._msg_count = 0
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock_lock = threading.RLock()

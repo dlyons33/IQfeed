@@ -31,17 +31,17 @@ if __name__ == "__main__":
         pwd = configparser.ConfigParser()
         pwd.read('user.pwd')
 
-        host = config['system']['host']
-        port = int(config['system']['deriv_port'])
-        vers = config['system']['version']
+        host = config['iqfeed']['host']
+        port = int(config['iqfeed']['deriv_port'])
+        vers = config['iqfeed']['version']
 
         symbols = config['market']['symbols']
         symbols = symbols.split(',')
 
         print('Starting IQConnect.exe')
         iqthread = start_iqconnect( pwd['iqfeed']['productID'],
-                                    pwd['iqfeed']['userID'],
-                                    pwd['iqfeed']['pass'])
+                                    pwd['iqfeed']['iq_user'],
+                                    pwd['iqfeed']['iq_pass'])
 
         print('Initializing Queue & Logger')
         dfqueue = queue.Queue()
