@@ -1,11 +1,15 @@
+import pandas as pd
+from collections import namedtuple
 import threading
 import queue
-import pandas as pd
 
 class Listener():
-    def __init__(self,msg_queue,logger,symbols):
+    def __init__(self,iq_queue,db_queue,logger,symbols):
         self._symbol_list = symbols
-        self._df_tups = [(sym,[]) for sym in symbols]
+
+        self._db_queue = db_queue
+        self._Bar = namedtuple('Bar',['symbol','date','time','open',
+                                'high','low','close','volume','cumvol'])
 
         # For logging:
         # logger.log(msg,how)
@@ -13,11 +17,9 @@ class Listener():
         # 'f' = write to file; 'p' = print; 't' = Telegram message
         self._logger = logger
 
-        self._queue = msg_queue
+        self._iq_queue = iq_queue
         self._listener_thread = threading.Thread(target=self,name='ListenerThread')
         self._stop = threading.Event()
-
-        self._msg_count = 0
 
         self._process_funcs = {}
         self._set_message_mappings()
@@ -36,9 +38,9 @@ class Listener():
 
     def stop_listening(self):
         # Main thread calls to stop - wait until all items are processed
-        print('Waiting for queue to clear before killing')
-        self._queue.join()
-        print('Killing listener thread')
+        print('Waiting for Listener queue to clear before killing')
+        self._iq_queue.join()
+        print('Killing Listener thread')
         self._stop.set()
         if self._listener_thread.is_alive():
             self._listener_thread.join(30)
@@ -55,11 +57,11 @@ class Listener():
         try:
             # With block=False, will raise exception if no item immediately available
             # Hence try/except block (may also be a way to use Select module)
-            fields = self._queue.get(block=False)
-            self._queue.task_done()
+            fields = self._iq_queue.get(block=False)
             handle_func = self._process_function(fields)
             handle_func(fields)
-        except:
+            self._iq_queue.task_done()
+        except queue.Empty:
             pass
 
     def _set_message_mappings(self):
@@ -86,20 +88,25 @@ class Listener():
         assert fields[0][0] == 'B'
         assert fields[2] in self._symbol_list
 
-        d= {
-        'symbol':fields[2],
-        'datetime':fields[3],
-        'open':fields[4],
-        'high':fields[5],
-        'low':fields[6],
-        'close':fields[7],
-        'volume':fields[9],
-        'cumvol':fields[8],
-        }
+        # field[3] = datetime = 'YYYY-MM-DD HH:MM:SS'
+        dt = fields[3].split(' ')
+
+        bar = self._Bar(
+        symbol=fields[2],
+        date=dt[0],
+        time=dt[1],
+        open=fields[4],
+        high=fields[5],
+        low=fields[6],
+        close=fields[7],
+        volume=fields[9],
+        cumvol=fields[8],
+        )
+
+        self._db_queue.put(bar)
 
         #########################################################################
         # THIS IS WHERE I NEED TO CHANGE ONCE DATABASE IS COMPLETE
-        self._new_bar(d)
 
         if fields[1][1] == 'U':
             pass
@@ -155,24 +162,3 @@ class Listener():
             reqid = elements.pop(0)
             msg = f'WATCHING: Symbol: {sym}   Interval: {intv}   RequestID: {reqid}'
             self._logger.log(msg,how='fp')
-
-
-    ###########################################################################
-    # Other / Development
-
-    def get_df(self):
-        dfs = []
-        for tup in self._df_tups:
-            df = pd.DataFrame(data=tup[1])
-            dfs.append((tup[0],df))
-        return dfs
-
-    def _new_bar(self,bar):
-        found = False
-        for tup in self._df_tups:
-            if tup[0] == bar['symbol']:
-                tup[1].append(bar)
-                found = True
-                break
-        if not found:
-            print('ERROR - Could not find symbol (tup,list)!')

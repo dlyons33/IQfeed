@@ -3,9 +3,11 @@ import configparser
 import subprocess
 import threading
 import queue
+import logging
 import connection
 import listener
 import logger
+import postgres
 
 def start_iqconnect(pID,uID,pw):
 
@@ -43,21 +45,29 @@ if __name__ == "__main__":
                                     pwd['iqfeed']['iq_user'],
                                     pwd['iqfeed']['iq_pass'])
 
-        print('Initializing Queue & Logger')
-        dfqueue = queue.Queue()
+        print('Initializing Logger')
         log = logger.Logger(    pwd['telegram']['botToken'],
                                 pwd['telegram']['chatID'],
                                 config['system']['log_path'])
 
+        print('Initializing database connection')
+        db_queue = queue.Queue()
+        db = postgres.DatabaseConnection(db_queue)
+        db.connect()
+
+        print('Initializing listener')
+        iq_queue = queue.Queue()
+        listen = listener.Listener(iq_queue,db_queue,log,symbols)
+        listen.start_listening()
+
         print('Initilizing socket connection')
-        conn = connection.BarsConnection(host,port,vers,dfqueue)
+        conn = connection.BarsConnection(host,port,vers,iq_queue)
         conn.connect()
 
-        # For dev, from here forward, use the print lock in conn object
+        t = db._get_tables()
+        print('Tables in database:',t)
 
-        conn.print_msg('Initializing listener')
-        listen = listener.Listener(dfqueue,log,symbols)
-        listen.start_listening()
+        # For dev, from here forward, use the print lock in conn object
 
         conn.print_msg('Requesting subscription to symbols')
 
@@ -71,17 +81,17 @@ if __name__ == "__main__":
         
         #cmd = 'wSPY\r\n' # for live market subscription
 
-        sleep(3)
+        sleep(5)
         conn.print_msg('Requesting symbols watched')
         conn.send_cmd('S,REQUEST WATCHES\r\n')
-        sleep(3)
+        sleep(2)
 
         conn.print_msg('Closing socket & killing thread')
         conn.disconnect()
         listen.stop_listening()
 
-        print('Pulling dataframes')
-        dfs = listen.get_df()
+        conn.print_msg('Closing database connection & killing thread')
+        db.disconnect()
 
         iqthread.join(timeout=30)
 
@@ -90,18 +100,24 @@ if __name__ == "__main__":
 
         print('All done!\n')
 
+        print('Pulling dataframes')
+        dfs = db.get_dataframes()
+
         for df in dfs:
             print(f'Rows in {df[0]} dataframe = {df[1].shape[0]}')
-            # print('\n')
-            # print(df[1])
-            # print('\n')
+            print('\n')
+            print(df[1])
+            print('\n')
 
     except Exception as e:
+        logging.exception('Main Loop Exception!')
+    finally:
+        print('Shutting threads down...')
         if conn:
             conn.disconnect()
         if listen:
             listen.stop_listening()
+        if db:
+            db.disconnect()
         if iqthread:
             iqthread.join(timeout=30)
-        print(e)
-        raise
