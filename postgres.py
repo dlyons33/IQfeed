@@ -4,6 +4,7 @@ import threading
 import psycopg2
 import queue
 import traceback
+from time import sleep
 
 class DatabaseConnection():
 
@@ -103,13 +104,14 @@ class DatabaseConnection():
     ###########################################################################
     # Processing bars & database calls
     def _pull_queue(self):
+        ''' Keep pulling so long as items are in queue - sleep if queue is empty '''
         data = None
         try:
             data = self._queue.get(block=False)
             self._process_data(data)
             self._queue.task_done()
         except queue.Empty:
-            pass
+            sleep(1)
 
     def _process_data(self,data):
         if data:
@@ -120,7 +122,8 @@ class DatabaseConnection():
 
     def _insert_record(self,data):
         vals = f"'{data.symbol}','{data.date}','{data.time}','{data.open}','{data.high}','{data.low}','{data.close}','{data.volume}','{data.cumvol}'"
-        instruction = f"insert into {symbol} (symbol,date,time,open,high,low,close,volume,cumvol) values ({vals});"
+        table_name = symbol.lower()
+        instruction = f"insert into {table_name} (symbol,date,time,open,high,low,close,volume,cumvol) values ({vals});"
         with self._cursor_lock:
             try:
                 self._cursor.execute(instruction)

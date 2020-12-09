@@ -2,6 +2,7 @@ import socket
 import threading
 import pandas as pd
 import os
+from time import sleep
 
 class BarsConnection():
 
@@ -30,6 +31,7 @@ class BarsConnection():
     # Callable looped by the new thread (target), listening at the socket
     def __call__(self):
         while not self._stop.is_set():
+            sleep(2)
             if self._read_socket():
                 self._process_messages()
 

@@ -2,6 +2,7 @@ import pandas as pd
 from collections import namedtuple
 import threading
 import queue
+from time import sleep
 
 class Listener():
     def __init__(self,iq_queue,db_queue,logger,symbols):
@@ -53,6 +54,7 @@ class Listener():
     # Message parsing
     def _pull_queue(self):
         '''
+        Keep pulling so long as items are in queue - sleep if queue is empty
         Queue items should only be a list of fields
         '''
         fields = None
@@ -64,7 +66,7 @@ class Listener():
             handle_func(fields)
             self._iq_queue.task_done()
         except queue.Empty:
-            pass
+            sleep(1)
 
     def _set_message_mappings(self):
 

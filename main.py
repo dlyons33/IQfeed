@@ -9,7 +9,6 @@ import listener
 import mylogger
 import postgres
 import traceback
-import create_tables
 
 def start_iqconnect(pID,uID,pw):
 
@@ -74,17 +73,6 @@ if __name__ == "__main__":
         conn.connect()
 
         conn.subscribe_to_symbols(symbols,config)
-
-        # print('All done!\n')
-
-        # print('Pulling dataframes')
-        # dfs = db.get_dataframes()
-
-        # for df in dfs:
-        #     print(f'Rows in {df[0]} dataframe = {df[1].shape[0]}')
-        #     print('\n')
-        #     print(df[1])
-        #     print('\n')
 
         # Loop until user --> CTRL-C
         run = True
