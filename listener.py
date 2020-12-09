@@ -5,16 +5,18 @@ import queue
 
 class Listener():
     def __init__(self,iq_queue,db_queue,logger,symbols):
+        '''
+        For logging:
+        logger.log(msg,how)
+        how = string = comination of 'f','p','t'
+        'f' = write to file; 'p' = print; 't' = Telegram message
+        '''
         self._symbol_list = symbols
 
         self._db_queue = db_queue
         self._Bar = namedtuple('Bar',['symbol','date','time','open',
                                 'high','low','close','volume','cumvol'])
 
-        # For logging:
-        # logger.log(msg,how)
-        # how = string = comination of 'f','p','t'
-        # 'f' = write to file; 'p' = print; 't' = Telegram message
         self._logger = logger
 
         self._iq_queue = iq_queue
@@ -38,14 +40,14 @@ class Listener():
 
     def stop_listening(self):
         # Main thread calls to stop - wait until all items are processed
-        print('Waiting for Listener queue to clear before killing')
+        print('Waiting for listener queue to clear before killing')
         self._iq_queue.join()
         print('Killing Listener thread')
         self._stop.set()
         if self._listener_thread.is_alive():
             self._listener_thread.join(30)
         if self._listener_thread.is_alive():
-            print('ERROR! Listener thread still ALIVE!')
+            print('ERROR! Listener thread may still be alive!')
 
     ###########################################################################
     # Message parsing
@@ -115,7 +117,9 @@ class Listener():
         elif fields[1][1] == 'C':
             pass
         else:
-            raise Exception('Unidentified Bar Type Field!')
+            msg = 'Unidentified Bar Type Field!'
+            self._logger(msg,how='tfp')
+            raise Exception(msg)
         #########################################################################
 
     def _process_system_msg(self,fields):

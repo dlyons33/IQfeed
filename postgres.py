@@ -2,16 +2,16 @@ import pandas as pd
 import configparser
 import threading
 import psycopg2
+import queue
 
 class DatabaseConnection():
 
     def __init__(self,msg_queue,logger):
-        self._logger = logger
 
         self._settings = {}
         self._symbols = []
-        self._df_tups = []
-        self._columns = ['symbol','date','time','open','high','low','close','volume','cumvol']
+        self._tables = []
+        self._logger = logger
 
         self._queue = msg_queue
         self._stop = threading.Event()
@@ -26,21 +26,27 @@ class DatabaseConnection():
 
     ###########################################################################
     # Starting and stopping db connection & thread
+
+    # Target for thread
+    def __call__(self):
+        while not self._stop.is_set():
+            self._pull_queue()
+
     def connect(self):
-        try:
-            self._conn = psycopg2.connect(database=self._settings['name'],
+        self._conn = psycopg2.connect(  database=self._settings['name'],
                                         user=self._settings['user'],
                                         password=self._settings['pass'],
                                         host=self._settings['host'],
                                         port=self._settings['port'])
-            self._cursor = self._conn.cursor()
-            print('Connected to database')
-            assert self._conn is not None
-            assert self._cursor is not None
-        except Exception as e:
-            print('ERROR - Failed to connect to database!')
-            print(e)
-            raise
+        self._cursor = self._conn.cursor()
+        assert self._conn is not None
+        assert self._cursor is not None
+        print('Connected to database')
+
+        self._check_symbols_and_tables()
+        assert (len(self._symbols) > 0), 'Database class failed to pull symbols from config!'
+        assert (len(self._tables) > 0), 'Database class failed to pull tables from database!'
+        
         self._start_db_thread()
 
     def _start_db_thread(self):
@@ -52,7 +58,7 @@ class DatabaseConnection():
     def disconnect(self):
         print('Waiting for database queue to clear')
         self._queue.join()
-        print('Killing database thread')
+        print('Closing database connection and killing thread')
         self._stop.set()
         self._cursor.close()
         self._conn.close()
@@ -74,75 +80,63 @@ class DatabaseConnection():
         self._settings['host'] = config['database']['db_host']
         self._settings['port'] = config['database']['db_port']
 
-        self._symbols = config['market']['symbols']
-        self._df_tups = [(sym,[]) for sym in self._symbols.split(',')]
+        symbols = config['market']['symbols']
+        self._symbols = symbols.split(',')
 
-    def __call__(self):
-        while not self._stop.is_set():
-            self._pull_queue()
+    def _check_symbols_and_tables(self):
+        self._tables = self._get_tables()
+        missing_symbols = []
+        for symbol in self._symbols:
+            if symbol not in self._tables:
+                missing_symbols.append(symbol)
+        try:
+            assert(len(missing_symbols) == 0)
+        except AssertionError:
+            self._logger.log(f"WARNING! Not all tracked symbols are in database! Missing: {missing_symbols}",how='pft')
+        else:
+            self._logger.log('All tracked symbols are in database',how='tpf')
 
     ###########################################################################
-    # Database calls
+    # Processing bars & database calls
     def _pull_queue(self):
         data = None
         try:
             data = self._queue.get(block=False)
             self._process_data(data)
             self._queue.task_done()
-            print('Queue Size:',self._queue.qsize())
         except queue.Empty:
             pass
 
     def _process_data(self,data):
         if data:
-            found = False
-            for tup in self._df_tups:
-                if tup[0] == data.symbol:
-                    tup[1].append(   [data.symbol,
-                                    data.date,
-                                    data.time,
-                                    data.open,
-                                    data.high,
-                                    data.low,
-                                    data.close,
-                                    data.volume,
-                                    data.cumvol])
-                    found = True
-                    break
-            if not found:
-                print('ERROR - UNREGISTERED SYMBOL RECEIVED!')
-
-        self._insert_record(data)
+            if data.symbol in self._tables:
+                self._insert_record(data)
+            else:
+                self._logger(f'WARNING: Received unregistered symbol (table not found): {data.symbol} - {data.date} {data.time}',how='fp')
 
     def _insert_record(self,data):
         vals = f"'{data.symbol}','{data.date}','{data.time}','{data.open}','{data.high}','{data.low}','{data.close}','{data.volume}','{data.cumvol}'"
-        instruction = f"insert into test (symbol,date,time,open,high,low,close,volume,cumvol) values ({vals});"
+        instruction = f"insert into {symbol} (symbol,date,time,open,high,low,close,volume,cumvol) values ({vals});"
         with self._cursor_lock:
             try:
                 self._cursor.execute(instruction)
                 self._conn.commit()
-                print('Inserted:',vals)
             except Exception as e:
-                print('Database instruction/execution error:')
+                self._logger.log('Database insertion error!',how='tfp')
                 print(e)
 
     def _get_tables(self):
+        results = None
+
         with self._cursor_lock:
             self._cursor.execute("select * from information_schema.tables where table_schema = 'public'")
-            tups = self._cursor.fetchall()
+            results = self._cursor.fetchall()
 
-        if tups:
+        if (len(results) > 0):
             tables = []
-            for t in tups:
+            for t in results:
                 tables.append(t[2])
             return [t.upper() for t in tables]
         else:
             self.disconnect()
-            raise Exception('Failed to pull public tables to ID symbols')
-
-    def get_dataframes(self):
-        output = []
-        for tup in self._df_tups:
-            df = pd.DataFrame(data=tup[1],columns=self._columns)
-            output.append((tup[0],df))
-        return output
+            raise Exception('Failed to pull public tables from database (needed to ID symbols)')

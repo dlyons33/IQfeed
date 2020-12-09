@@ -6,8 +6,10 @@ import queue
 import logging
 import connection
 import listener
-import logger
+import mylogger
 import postgres
+import traceback
+import create_tables
 
 def start_iqconnect(pID,uID,pw):
 
@@ -25,6 +27,15 @@ def iq_thread(exe_args):
 
 if __name__ == "__main__":
 
+    # Connection variables
+    conn = None
+    db = None
+    listen = None
+    iqthread = None
+
+    # First, map symbols in config to tables in database
+    create_tables.map_tables()
+
     try:
 
         config = configparser.ConfigParser()
@@ -32,10 +43,6 @@ if __name__ == "__main__":
 
         pwd = configparser.ConfigParser()
         pwd.read('user.pwd')
-
-        host = config['iqfeed']['host']
-        port = int(config['iqfeed']['deriv_port'])
-        vers = config['iqfeed']['version']
 
         symbols = config['market']['symbols']
         symbols = symbols.split(',')
@@ -46,71 +53,53 @@ if __name__ == "__main__":
                                     pwd['iqfeed']['iq_pass'])
 
         print('Initializing Logger')
-        log = logger.Logger(    pwd['telegram']['botToken'],
-                                pwd['telegram']['chatID'],
-                                config['system']['log_path'])
+        mylog = mylogger.Logger(    pwd['telegram']['botToken'],
+                                    pwd['telegram']['chatID'],
+                                    config['system']['log_path'])
+
+        # Instantiate Queues
+        db_queue = queue.Queue()
+        iq_queue = queue.Queue()
 
         print('Initializing database connection')
-        db_queue = queue.Queue()
-        db = postgres.DatabaseConnection(db_queue)
+        db = postgres.DatabaseConnection(db_queue,mylog)
         db.connect()
 
         print('Initializing listener')
-        iq_queue = queue.Queue()
-        listen = listener.Listener(iq_queue,db_queue,log,symbols)
+        listen = listener.Listener(iq_queue,db_queue,mylog,symbols)
         listen.start_listening()
 
-        print('Initilizing socket connection')
-        conn = connection.BarsConnection(host,port,vers,iq_queue)
+        print('Initilizing IQFeed socket connection')
+        conn = connection.BarsConnection(iq_queue)
         conn.connect()
 
-        t = db._get_tables()
-        print('Tables in database:',t)
+        conn.subscribe_to_symbols(symbols,config)
 
-        # For dev, from here forward, use the print lock in conn object
+        # print('All done!\n')
 
-        conn.print_msg('Requesting subscription to symbols')
+        # print('Pulling dataframes')
+        # dfs = db.get_dataframes()
 
-        in_sec = config['market']['interval_seconds']
-        start = config['market']['start_time']
-        end = config['market']['end_time']
+        # for df in dfs:
+        #     print(f'Rows in {df[0]} dataframe = {df[1].shape[0]}')
+        #     print('\n')
+        #     print(df[1])
+        #     print('\n')
 
-        for sym in symbols:
-            cmd = f'BW,{sym},{in_sec},20201204 090000,,,{start},{end},B-{sym}-{in_sec},s,,\r\n'
-            conn.send_cmd(cmd)
-        
-        #cmd = 'wSPY\r\n' # for live market subscription
+        # Loop until user --> CTRL-C
+        run = True
+        while run:
+            sleep(5)
 
-        sleep(5)
-        conn.print_msg('Requesting symbols watched')
-        conn.send_cmd('S,REQUEST WATCHES\r\n')
-        sleep(2)
 
-        conn.print_msg('Closing socket & killing thread')
-        conn.disconnect()
-        listen.stop_listening()
-
-        conn.print_msg('Closing database connection & killing thread')
-        db.disconnect()
-
-        iqthread.join(timeout=30)
-
-        if iqthread.is_alive():
-            print('ERROR iqthread is still alive!')
-
-        print('All done!\n')
-
-        print('Pulling dataframes')
-        dfs = db.get_dataframes()
-
-        for df in dfs:
-            print(f'Rows in {df[0]} dataframe = {df[1].shape[0]}')
-            print('\n')
-            print(df[1])
-            print('\n')
-
+    except KeyboardInterrupt:
+        print('User terminating application...')
+        run = False
     except Exception as e:
-        logging.exception('Main Loop Exception!')
+        msg = 'Main Loop Exception!'
+        logging.exception(msg)
+        # mylog.log(msg,how='tfp')
+        print(traceback.format_exc())
     finally:
         print('Shutting threads down...')
         if conn:
@@ -120,4 +109,8 @@ if __name__ == "__main__":
         if db:
             db.disconnect()
         if iqthread:
+            print('Waiting for IQconnect.exe to shut down')
             iqthread.join(timeout=30)
+            if iqthread.is_alive():
+                print('ERROR iqthread is still alive!')
+        print('Shutting down...')

@@ -44,20 +44,24 @@ class Txt_Log():
             f.write(f'{prefix}{msg}\n')
 
 class Logger():
+
+    '''
+    how [string] = any combination of:
+    t = telegram
+    f = file
+    p = print
+    '''
+    valid_how = ['t','f','p']
+
     def __init__(self,botToken,botChat,directory):
         self._bot = Telegram_Bot(botToken,botChat)
         self._file = Txt_Log(directory)
         self._lock = threading.RLock()
 
     def log(self,msg,how='tfp'):
-        '''
-        how [string] = any combination of:
-        t = telegram
-        f = file
-        p = print
-        '''
+        
         assert msg, "Log received invalid message"
-        assert (how in ['t','f','p','tf','tp','fp','tfp']), "Log received invalid method"
+        assert (self._validate_how(how) == True), "Log received invalid method"
 
         with self._lock:
             if 'p' in how:
@@ -73,3 +77,7 @@ class Logger():
     def wake_bot(self):
         with self._lock:
             self._bot.wake_up()
+
+    def _validate_how(self,how):
+        letters = [char for char in how]
+        return all([ltr in Logger.valid_how for ltr in letters])
