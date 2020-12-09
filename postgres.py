@@ -3,6 +3,7 @@ import configparser
 import threading
 import psycopg2
 import queue
+import traceback
 
 class DatabaseConnection():
 
@@ -23,6 +24,7 @@ class DatabaseConnection():
         self._cursor = None
 
         self._load_settings()
+        assert (len(self._symbols) > 0), 'Database class failed to pull symbols from config!'
 
     ###########################################################################
     # Starting and stopping db connection & thread
@@ -43,10 +45,7 @@ class DatabaseConnection():
         assert self._cursor is not None
         print('Connected to database')
 
-        self._check_symbols_and_tables()
-        assert (len(self._symbols) > 0), 'Database class failed to pull symbols from config!'
-        assert (len(self._tables) > 0), 'Database class failed to pull tables from database!'
-        
+        self._map_symbols_and_tables()
         self._start_db_thread()
 
     def _start_db_thread(self):
@@ -83,16 +82,21 @@ class DatabaseConnection():
         symbols = config['market']['symbols']
         self._symbols = symbols.split(',')
 
-    def _check_symbols_and_tables(self):
+    def _map_symbols_and_tables(self):
         self._tables = self._get_tables()
+        assert (len(self._tables) > 0), 'Database class failed to pull tables from database!'
+        
         missing_symbols = []
         for symbol in self._symbols:
             if symbol not in self._tables:
                 missing_symbols.append(symbol)
+        
         try:
             assert(len(missing_symbols) == 0)
         except AssertionError:
             self._logger.log(f"WARNING! Not all tracked symbols are in database! Missing: {missing_symbols}",how='pft')
+            for m_symbol in missing_symbols:
+                self._create_table(m_symbol)
         else:
             self._logger.log('All tracked symbols are in database',how='tpf')
 
@@ -140,3 +144,28 @@ class DatabaseConnection():
         else:
             self.disconnect()
             raise Exception('Failed to pull public tables from database (needed to ID symbols)')
+
+    def _create_table(self,symbol):
+        name = symbol.lower()
+        instruction = f"""     create table {name} (
+                                id BIGSERIAL NOT NULL PRIMARY KEY,
+                                date DATE NOT NULL,
+                                time TIME(0) WITHOUT TIME ZONE NOT NULL,
+                                open NUMERIC NOT NULL,
+                                high NUMERIC NOT NULL,
+                                low NUMERIC NOT NULL,
+                                close NUMERIC NOT NULL,
+                                volume NUMERIC NOT NULL,
+                                cumvol NUMERIC NOT NULL
+                                );"""
+        with self._cursor_lock:
+            try:
+                self._cursor.execute(instruction)
+                self._conn.commit()
+            except Exception as e:
+                msg = f'ERROR! Failure to create table for symbol {symbol}!'
+                self._logger(msg,how='tpf')
+                print(traceback.format_exc())
+            else:
+                msg = f'Successfully created table for {symbol}'
+                self._logger(msg,how='tpf')

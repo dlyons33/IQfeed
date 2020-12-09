@@ -34,7 +34,7 @@ if __name__ == "__main__":
     iqthread = None
 
     # First, map symbols in config to tables in database
-    create_tables.map_tables()
+    #create_tables.map_tables()
 
     try:
 
@@ -110,7 +110,8 @@ if __name__ == "__main__":
             db.disconnect()
         if iqthread:
             print('Waiting for IQconnect.exe to shut down')
-            iqthread.join(timeout=30)
+            if iqthread.is_alive():
+                iqthread.join(timeout=30)
             if iqthread.is_alive():
                 print('ERROR iqthread is still alive!')
         print('Shutting down...')
