@@ -6,17 +6,18 @@ from time import sleep
 
 class BarsConnection():
 
-    # IQ Feed settings constants
+    # IQ Feed settings
     protocol_version = "6.1"
     iqfeed_host = os.getenv('IQFEED_HOST', "127.0.0.1")
     deriv_port = int(os.getenv('IQFEED_PORT_DERIV', 9400))
 
-    def __init__(self,msgqueue):
+    def __init__(self,msgqueue,logger):
         self._name = 'LiveBarListener'
         self._host = BarsConnection.iqfeed_host
         self._port = BarsConnection.deriv_port
         self._version = BarsConnection.protocol_version
 
+        self._logger = logger
         self._msgqueue = msgqueue
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -31,7 +32,6 @@ class BarsConnection():
     # Callable looped by the new thread (target), listening at the socket
     def __call__(self):
         while not self._stop.is_set():
-            sleep(2)
             if self._read_socket():
                 self._process_messages()
 
@@ -40,7 +40,7 @@ class BarsConnection():
     def connect(self):
         try:
             self._sock.connect((self._host,self._port))
-            self._sock.setblocking(False)
+            self._sock.settimeout(2)
             self._set_protocol()
             self._start_reader()
             print('Socket connected & reader thread started!')
@@ -56,10 +56,6 @@ class BarsConnection():
             self._sock.shutdown(socket.SHUT_RDWR)
             self._sock.close()
             self._sock = None
-        if self._reader_thread.is_alive():
-            self._reader_thread.join(30)
-        if self._reader_thread.is_alive():
-            print('ERROR: IQ Feed socket reader thread may still be alive!')
 
     def _start_reader(self):
         self._stop.clear()
@@ -80,14 +76,18 @@ class BarsConnection():
         data_received = None
         try:
             data_received = self._sock.recv(1024).decode()
-        except:
-            pass
-        if data_received:
+        except socket.timeout:
+            return False
+        else:
             with self._buff_lock:
                 self._buffered_data += data_received
             return True
-        else:
-            return False
+
+    def _process_messages(self):
+        message = self._next_message()
+        while message != '':
+            self._queue_message(message)            
+            message = self._next_message()
 
     def _next_message(self):
         with self._buff_lock:
@@ -99,24 +99,15 @@ class BarsConnection():
             else:
                 return ''
 
-    def _process_messages(self):
-        message = self._next_message()
-        while message != '':
-            self._queue_message(message)            
-            message = self._next_message()
-
     def _send_cmd(self,cmd):
         with self._sock_lock:
-            #self._sock.sendall(cmd.encode(encoding='latin-1'))
             self._sock.sendall(cmd.encode())
             print('>>>>>>>>>>>>> Sent command:',cmd[:-2])
 
     def _queue_message(self,msg):
         fields = msg.split(',')
+        # print('$$$$$$$$$$$$$$ MESSAGE:',msg)
         self._msgqueue.put(fields)
-        # print('Queue size:',self._msgqueue.qsize())
-        # self._msg_count += 1
-        # print(f'Queued {self._msg_count} messages')
 
     ###########################################################################
     # IQFeed protocols
@@ -136,8 +127,10 @@ class BarsConnection():
         end = config['market']['end_time']
 
         currday = pd.Timestamp.now().strftime('%Y%m%d')
+        priorday = currday - pd.Timedelta(1,'D')
 
         for sym in symbols:
-            cmd = f'BW,{sym},{in_sec},{currday} 072000,,,{start},{end},B-{sym}-{in_sec},s,,\r\n'
+            cmd = f'BW,{sym},{in_sec},{priorday} 072000,,,{start},{end},B-{sym}-{in_sec},s,,\r\n'
             self._send_cmd(cmd)
-            print('Subscribing to symbol',sym)
+            msg = f'Subscribing to symbol {sym}'
+            self._logger.log(msg,how='pf')

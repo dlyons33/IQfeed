@@ -41,7 +41,7 @@ class Listener():
 
     def stop_listening(self):
         # Main thread calls to stop - wait until all items are processed
-        print('Waiting for listener queue to clear before killing')
+        print('Waiting for listener queue to clear before killing thread')
         self._iq_queue.join()
         print('Killing Listener thread')
         self._stop.set()
@@ -59,8 +59,6 @@ class Listener():
         '''
         fields = None
         try:
-            # With block=False, will raise exception if no item immediately available
-            # Hence try/except block (may also be a way to use Select module)
             fields = self._iq_queue.get(block=False)
             handle_func = self._process_function(fields)
             handle_func(fields)
@@ -77,23 +75,18 @@ class Listener():
         self._process_funcs['S'] = self._process_system_msg
 
     def _process_function(self,fields):
-        pf = self._process_funcs.get(fields[0][0]) # first letter of first field
+        pf = self._process_funcs.get(fields[0][0])
         if pf is not None:
             return pf
         else:
             return self._process_unregistered_message
 
     def _process_bar(self,fields):
-        ###############################
-        # Will need to take into account TYPE of bar
-        # Type = field[1] = 'B[type]'
-        # types: U = update, H = complete from history, C = complete new live bar
-        ###############################
+
         assert fields[0][0] == 'B'
         assert fields[2] in self._symbol_list
 
-        # field[3] = datetime = 'YYYY-MM-DD HH:MM:SS'
-        dt = fields[3].split(' ')
+        dt = fields[3].split(' ') # split datetime into 2 fields ('YYYY-MM-DD HH:MM:SS')
 
         bar = self._Bar(
         symbol=fields[2],
@@ -107,17 +100,18 @@ class Listener():
         cumvol=fields[8],
         )
 
-        self._db_queue.put(bar)
-
         #########################################################################
-        # THIS IS WHERE I NEED TO CHANGE ONCE DATABASE IS COMPLETE
+        # THIS IS WHERE I NEED TO CHANGE FOR PRODCUTION
+        # Will need to take into account TYPE of bar
+        # Type = field[1] = 'B[type]'
+        # types: U = update, H = complete from history, C = complete new live bar
 
         if fields[1][1] == 'U':
             pass
         elif fields[1][1] == 'H':
-            pass
+            self._db_queue.put(bar) # in future, will not want to put historical bars in database
         elif fields[1][1] == 'C':
-            pass
+            self._db_queue.put(bar)
         else:
             msg = 'Unidentified Bar Type Field!'
             self._logger(msg,how='tfp')

@@ -122,7 +122,7 @@ class DatabaseConnection():
 
     def _insert_record(self,data):
         vals = f"'{data.symbol}','{data.date}','{data.time}','{data.open}','{data.high}','{data.low}','{data.close}','{data.volume}','{data.cumvol}'"
-        table_name = symbol.lower()
+        table_name = data.symbol.lower()
         instruction = f"insert into {table_name} (symbol,date,time,open,high,low,close,volume,cumvol) values ({vals});"
         with self._cursor_lock:
             try:
@@ -131,6 +131,7 @@ class DatabaseConnection():
             except Exception as e:
                 self._logger.log('Database insertion error!',how='tfp')
                 print(e)
+                raise
 
     def _get_tables(self):
         results = None
@@ -150,8 +151,9 @@ class DatabaseConnection():
 
     def _create_table(self,symbol):
         name = symbol.lower()
-        instruction = f"""     create table {name} (
+        instruction = f"""      create table {name} (
                                 id BIGSERIAL NOT NULL PRIMARY KEY,
+                                symbol VARCHAR(10) NOT NULL,
                                 date DATE NOT NULL,
                                 time TIME(0) WITHOUT TIME ZONE NOT NULL,
                                 open NUMERIC NOT NULL,
@@ -167,8 +169,8 @@ class DatabaseConnection():
                 self._conn.commit()
             except Exception as e:
                 msg = f'ERROR! Failure to create table for symbol {symbol}!'
-                self._logger(msg,how='tpf')
+                self._logger.log(msg,how='tpf')
                 print(traceback.format_exc())
             else:
                 msg = f'Successfully created table for {symbol}'
-                self._logger(msg,how='tpf')
+                self._logger.log(msg,how='tpf')

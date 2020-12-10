@@ -45,6 +45,7 @@ if __name__ == "__main__":
 
         symbols = config['market']['symbols']
         symbols = symbols.split(',')
+        print('Tracking symbols:',symbols)
 
         print('Starting IQConnect.exe')
         iqthread = start_iqconnect( pwd['iqfeed']['productID'],
@@ -69,8 +70,10 @@ if __name__ == "__main__":
         listen.start_listening()
 
         print('Initilizing IQFeed socket connection')
-        conn = connection.BarsConnection(iq_queue)
+        conn = connection.BarsConnection(iq_queue,mylog)
         conn.connect()
+
+        sleep(3) # might be sending listener request too quickly?
 
         conn.subscribe_to_symbols(symbols,config)
 
