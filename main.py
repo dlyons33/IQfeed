@@ -26,14 +26,10 @@ def iq_thread(exe_args):
 
 if __name__ == "__main__":
 
-    # Connection variables
-    conn = None
-    db = None
-    listen = None
-    iqthread = None
-
-    # First, map symbols in config to tables in database
-    #create_tables.map_tables()
+    conn = None         # socket to IQFeed
+    db = None           # database connection
+    listen = None       # intermediary parser between IQFeed & Database
+    iqthread = None     # thread for running IQconnect.exe (gateway)
 
     try:
 
@@ -47,12 +43,10 @@ if __name__ == "__main__":
         symbols = symbols.split(',')
         print('Tracking symbols:',symbols)
 
-        print('Starting IQConnect.exe')
         iqthread = start_iqconnect( pwd['iqfeed']['productID'],
                                     pwd['iqfeed']['iq_user'],
                                     pwd['iqfeed']['iq_pass'])
 
-        print('Initializing Logger')
         mylog = mylogger.Logger(    pwd['telegram']['botToken'],
                                     pwd['telegram']['chatID'],
                                     config['system']['log_path'])
@@ -60,15 +54,12 @@ if __name__ == "__main__":
         db_queue = queue.Queue()
         iq_queue = queue.Queue()
 
-        print('Initializing database connection')
         db = postgres.DatabaseConnection(db_queue,mylog)
         db.connect()
 
-        print('Initializing listener')
         listen = listener.Listener(iq_queue,db_queue,mylog,symbols)
         listen.start_listening()
 
-        print('Initilizing IQFeed socket connection')
         conn = connection.BarsConnection(iq_queue,mylog)
         conn.connect()
 
@@ -76,7 +67,7 @@ if __name__ == "__main__":
 
         conn.subscribe_to_symbols(symbols,config)
 
-        print('main() looping...')
+        print('Application initialized - main() looping...')
 
         # Loop until user --> CTRL-C
         run = True
