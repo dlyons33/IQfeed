@@ -113,7 +113,7 @@ class Listener():
         elif fields[1][1] == 'C':
             self._db_queue.put(bar)
         else:
-            msg = 'Unidentified Bar Type Field!'
+            msg = f'Unidentified Bar Type Field! == {fields[1][1]}\n{fields}'
             self._logger(msg,how='tfp')
             raise Exception(msg)
         #########################################################################

@@ -30,6 +30,7 @@ __pycache__
 *.rar
 *.tar
 *.zip
+venv
 
 # Logs and databases #
 ######################

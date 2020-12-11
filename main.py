@@ -57,7 +57,6 @@ if __name__ == "__main__":
                                     pwd['telegram']['chatID'],
                                     config['system']['log_path'])
 
-        # Instantiate Queues
         db_queue = queue.Queue()
         iq_queue = queue.Queue()
 
@@ -73,9 +72,11 @@ if __name__ == "__main__":
         conn = connection.BarsConnection(iq_queue,mylog)
         conn.connect()
 
-        sleep(3) # might be sending listener request too quickly?
+        sleep(2)
 
         conn.subscribe_to_symbols(symbols,config)
+
+        print('main() looping...')
 
         # Loop until user --> CTRL-C
         run = True

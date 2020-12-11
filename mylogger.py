@@ -8,6 +8,8 @@ class Telegram_Bot():
     chat: ID for recipient user or channel
     '''
 
+    DEBUG = True
+
     def __init__(self,token,chat):
         self._base = f'https://api.telegram.org/bot{token}/sendMessage?chat_id={chat}&text='
 
@@ -22,7 +24,8 @@ class Telegram_Bot():
         self._get_url(url)
 
     def _get_url(self,url):
-        requests.get(url)
+        if not Telegram_Bot.DEBUG:
+            requests.get(url)
 
 class Txt_Log():
     ''' For logging to local .txt file '''

@@ -106,7 +106,6 @@ class BarsConnection():
 
     def _queue_message(self,msg):
         fields = msg.split(',')
-        # print('$$$$$$$$$$$$$$ MESSAGE:',msg)
         self._msgqueue.put(fields)
 
     ###########################################################################
@@ -126,11 +125,15 @@ class BarsConnection():
         start = config['market']['start_time']
         end = config['market']['end_time']
 
-        currday = pd.Timestamp.now().strftime('%Y%m%d')
-        priorday = currday - pd.Timedelta(1,'D')
+        #startday = pd.Timestamp.now().strftime('%Y%m%d') # current day
+        startday = (pd.Timestamp.now() - pd.Timedelta(1,'D')).strftime('%Y%m%d')
 
         for sym in symbols:
-            cmd = f'BW,{sym},{in_sec},{priorday} 072000,,,{start},{end},B-{sym}-{in_sec},s,,\r\n'
+            cmd = f'BW,{sym},{in_sec},{startday} 072000,,,{start},{end},B-{sym}-{in_sec},s,,\r\n'
             self._send_cmd(cmd)
             msg = f'Subscribing to symbol {sym}'
             self._logger.log(msg,how='pf')
+
+        sleep(2)
+
+        self._send_cmd('S,REQUEST WATCHES\r\n')

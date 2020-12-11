@@ -118,7 +118,7 @@ class DatabaseConnection():
             if data.symbol in self._tables:
                 self._insert_record(data)
             else:
-                self._logger(f'WARNING: Received unregistered symbol (table not found): {data.symbol} - {data.date} {data.time}',how='fp')
+                self._logger.log(f'WARNING: Received unregistered symbol (table not found): {data.symbol} - {data.date} {data.time}',how='fp')
 
     def _insert_record(self,data):
         vals = f"'{data.symbol}','{data.date}','{data.time}','{data.open}','{data.high}','{data.low}','{data.close}','{data.volume}','{data.cumvol}'"
